@@ -1,0 +1,28 @@
+name: Daily Job Monitor
+
+on:
+  schedule:
+    - cron: "0 6 * * *"  # 06:00 UTC = 07:00 Stockholm (CET) / 08:00 CEST
+  workflow_dispatch:      # Allow manual trigger from GitHub UI
+
+jobs:
+  run-monitor:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run job monitor
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python main.py
