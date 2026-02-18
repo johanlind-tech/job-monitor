@@ -175,8 +175,7 @@ def scrape_platsbanken() -> list[dict]:
             url = "https://jobsearch.api.jobtechdev.se/search"
             params = {
                 "q": kw,
-                "municipality": "0114,0180,0181,0182,0183,0184",  # Stockholm municipalities
-                "limit": 20,
+                "limit": 50,
                 "offset": 0,
             }
             r = requests.get(url, params=params, timeout=15)
@@ -187,6 +186,14 @@ def scrape_platsbanken() -> list[dict]:
                 if job_id in seen_ids:
                     continue
                 seen_ids.add(job_id)
+
+                # Extract structured employment type from the API response
+                et_label = (
+                    hit.get("employment_type", {}).get("label", "")
+                    if isinstance(hit.get("employment_type"), dict)
+                    else ""
+                )
+
                 jobs.append({
                     "id": job_id,
                     "title": hit.get("headline", ""),
@@ -194,6 +201,7 @@ def scrape_platsbanken() -> list[dict]:
                     "url": hit.get("webpage_url") or f"https://arbetsformedlingen.se/platsbanken/annonser/{job_id}",
                     "description": hit.get("description", {}).get("text", "")[:500],
                     "source": "platsbanken",
+                    "api_employment_type": et_label,
                 })
         except Exception as e:
             print(f"[WARN] Platsbanken API error for '{kw}': {e}")

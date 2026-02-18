@@ -1,3 +1,12 @@
+"""
+Keyword filter — kept for backwards compatibility.
+
+In the multi-user SaaS pipeline, per-user filtering happens at queue-
+insertion time using each user's own keyword preferences.  This module
+is still used by the scraper pipeline as a global "is this job
+potentially relevant to *any* user" pre-filter.
+"""
+
 from config import KEYWORDS_INCLUDE, KEYWORDS_EXCLUDE
 
 

@@ -21,21 +21,8 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Restore seen_jobs database
-        uses: actions/cache@v4
-        with:
-          path: seen_jobs.db
-          key: seen-jobs-db-${{ github.run_id }}
-          restore-keys: |
-            seen-jobs-db-
-
       - name: Run job monitor
         env:
-          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: python main.py
-
-      - name: Save seen_jobs database
-        uses: actions/cache@v4
-        with:
-          path: seen_jobs.db
-          key: seen-jobs-db-${{ github.run_id }}
