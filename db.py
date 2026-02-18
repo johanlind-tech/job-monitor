@@ -77,3 +77,57 @@ def fetch_swedish_locations() -> list[dict]:
         .execute()
     )
     return result.data
+
+
+# ── Per-user queuing ─────────────────────────────────────────────────────────
+
+
+def fetch_active_user_preferences() -> list[dict]:
+    """Fetch preferences for all users with an active or trialing subscription.
+
+    Returns a list of dicts, each containing:
+        user_id, keywords_include, keywords_exclude, sources_enabled,
+        regions, municipalities, employment_types
+    """
+    client = _get_client()
+    result = (
+        client.table("user_preferences")
+        .select(
+            "user_id, keywords_include, keywords_exclude, "
+            "sources_enabled, regions, municipalities, employment_types, "
+            "profiles!inner(subscription_status)"
+        )
+        .in_("profiles.subscription_status", ["active", "trialing"])
+        .execute()
+    )
+    # Flatten: drop the nested profiles object from each row
+    prefs = []
+    for row in result.data:
+        row.pop("profiles", None)
+        prefs.append(row)
+    return prefs
+
+
+def batch_insert_queue_entries(entries: list[dict]) -> int:
+    """Insert queue entries into user_job_queue (idempotent).
+
+    Parameters
+    ----------
+    entries : list[dict]
+        Each dict must have keys ``user_id`` and ``job_id``.
+
+    Returns
+    -------
+    int
+        Number of rows actually inserted (duplicates are silently skipped).
+    """
+    if not entries:
+        return 0
+    client = _get_client()
+    rows = [{"user_id": e["user_id"], "job_id": e["job_id"]} for e in entries]
+    result = (
+        client.table("user_job_queue")
+        .upsert(rows, on_conflict="user_id,job_id", ignore_duplicates=True)
+        .execute()
+    )
+    return len(result.data)
