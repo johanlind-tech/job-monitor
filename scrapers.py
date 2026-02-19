@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import re
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 import requests
 from bs4 import BeautifulSoup
 
@@ -166,8 +168,73 @@ def scrape_novare() -> list[dict]:
 
 
 # ── PLATSBANKEN API ───────────────────────────────────────────────────────────
+
+# Tracking parameters to strip from application URLs.
+_TRACKING_PARAMS = {"pnty_src", "utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"}
+
+
+def _clean_apply_url(url: str) -> str:
+    """Remove common tracking parameters from an application URL."""
+    parsed = urlparse(url)
+    params = parse_qs(parsed.query, keep_blank_values=True)
+    cleaned = {k: v for k, v in params.items() if k not in _TRACKING_PARAMS}
+    new_query = urlencode(cleaned, doseq=True)
+    return urlunparse(parsed._replace(query=new_query))
+
+
+# Regex patterns to extract client company from headlines.
+# Pattern A (most common): "Role till Company" / "Managing Director to LAPP"
+_CLIENT_AFTER_RE = re.compile(
+    r"(?:^|\s)(?:till|to|för|for|hos|at)\s+(.+)",
+    re.IGNORECASE,
+)
+# Pattern B: "Company rekryterar Role" / "Company söker Role"
+_CLIENT_BEFORE_RE = re.compile(
+    r"^(.+?)\s+(?:rekryterar|söker|anställer|seeks|hiring|hires)\s+",
+    re.IGNORECASE,
+)
+
+
+def _extract_client_company(headline: str) -> str | None:
+    """Try to extract the client company name from a Platsbanken headline.
+
+    Recruitment firms typically use patterns like:
+    - "Role till Company" / "Role to Company" (company after role)
+    - "Company rekryterar Role" / "Company söker Role" (company before role)
+
+    Returns *None* when no pattern is detected.
+    """
+    # Try pattern A first (most common)
+    m = _CLIENT_AFTER_RE.search(headline)
+    if m:
+        company = m.group(1).strip().rstrip("!.?")
+        if len(company) >= 2:
+            # Skip common false positives
+            skip_words = {"oss", "en", "ett", "dig", "er", "dem", "vår", "ditt"}
+            if company.lower() not in skip_words:
+                return company
+
+    # Try pattern B: "Company söker/rekryterar Role"
+    m = _CLIENT_BEFORE_RE.search(headline)
+    if m:
+        company = m.group(1).strip().rstrip("!.?")
+        if len(company) >= 2:
+            return company
+
+    return None
+
+
 def scrape_platsbanken() -> list[dict]:
-    """Uses the free JobTech/Platsbanken API — no scraping needed."""
+    """Uses the free JobTech/Platsbanken API — no scraping needed.
+
+    When a recruitment firm posts on behalf of a client:
+    - The client company is extracted from the headline (e.g. "VD till Acme"
+      → company = "Acme") and used as the *company* field.
+    - The application URL (pointing to the firm's own page) is used instead
+      of the Platsbanken listing URL.
+    - If the client company cannot be parsed, the employer name is kept.
+    - Source remains "platsbanken" for all listings from this scraper.
+    """
     from config import KEYWORDS_INCLUDE
     jobs = []
     seen_ids = set()
@@ -196,13 +263,43 @@ def scrape_platsbanken() -> list[dict]:
                     else ""
                 )
 
+                employer_name = hit.get("employer", {}).get("name", "")
+                headline = hit.get("headline", "")
+                apply_url = (hit.get("application_details") or {}).get("url") or ""
+                platsbanken_url = (
+                    hit.get("webpage_url")
+                    or f"https://arbetsformedlingen.se/platsbanken/annonser/{job_id}"
+                )
+
+                # ── Detect recruitment-firm postings ──────────────────
+                # A recruitment firm typically has an external application URL
+                # (not on arbetsformedlingen.se).  We check the *domain* of
+                # the URL, not just the string, because tracking params like
+                # ?pnty_src=arbetsformedlingen would cause false negatives.
+                apply_domain = urlparse(apply_url).netloc.lower() if apply_url else ""
+                is_agency = bool(
+                    apply_url
+                    and "arbetsformedlingen" not in apply_domain
+                )
+
+                if is_agency:
+                    # Try to extract the real client company from the headline
+                    client = _extract_client_company(headline)
+                    company = client if client else employer_name
+                    job_url = _clean_apply_url(apply_url)
+                    source = "platsbanken"  # keep source as platsbanken
+                else:
+                    company = employer_name
+                    job_url = platsbanken_url
+                    source = "platsbanken"
+
                 jobs.append({
                     "id": job_id,
-                    "title": hit.get("headline", ""),
-                    "company": hit.get("employer", {}).get("name", ""),
-                    "url": hit.get("webpage_url") or f"https://arbetsformedlingen.se/platsbanken/annonser/{job_id}",
+                    "title": headline,
+                    "company": company,
+                    "url": job_url,
                     "description": hit.get("description", {}).get("text", "")[:500],
-                    "source": "platsbanken",
+                    "source": source,
                     "api_employment_type": et_label,
                 })
         except Exception as e:
