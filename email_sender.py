@@ -3,7 +3,7 @@ Per-user email digest delivery via the SendGrid API.
 
 Env vars required:
     SENDGRID_API_KEY      – SendGrid API key
-    SENDGRID_FROM_EMAIL   – verified sender (default: noreply@topjobs.se)
+    SENDGRID_FROM_EMAIL   – verified sender (default: noreply@nordicexecutivelist.com)
 """
 
 import os
@@ -67,7 +67,7 @@ def _build_html(jobs: list[dict]) -> str:
     parts.append(
         "<hr>"
         '<p style="font-size:12px;color:#999;">'
-        "TopJobs · your personalized job digest"
+        "Nordic Executive List · your personalized job digest"
         "</p>"
         "</body></html>"
     )
@@ -88,14 +88,14 @@ def send_digest(jobs: list[dict], recipient_email: str) -> bool:
         print("[ERROR] SENDGRID_API_KEY environment variable not set.")
         return False
 
-    from_email = os.environ.get("SENDGRID_FROM_EMAIL", "noreply@topjobs.se")
+    from_email = os.environ.get("SENDGRID_FROM_EMAIL", "noreply@nordicexecutivelist.com")
     today = date.today().strftime("%d %b %Y")
     subject = f"📋 Job Digest — {today} ({len(jobs)} new)"
 
     html = _build_html(jobs)
 
     message = Mail(
-        from_email=Email(from_email, "TopJobs"),
+        from_email=Email(from_email, "Nordic Executive List"),
         to_emails=To(recipient_email),
         subject=subject,
         html_content=Content("text/html", html),
