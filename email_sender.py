@@ -1,70 +1,116 @@
-import smtplib
+"""
+Per-user email digest delivery via the SendGrid API.
+
+Env vars required:
+    SENDGRID_API_KEY      – SendGrid API key
+    SENDGRID_FROM_EMAIL   – verified sender (default: noreply@nordicexecutivelist.com)
+"""
+
 import os
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 from datetime import date
-from config import EMAIL_SENDER, EMAIL_RECIPIENT, EMAIL_SUBJECT
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail, Email, To, Content
+
+# ── Source display names ─────────────────────────────────────────────────────
+
+SOURCE_LABELS = {
+    "capa": "CAPA",
+    "interimsearch": "Interim Search",
+    "wise": "Wise",
+    "headagent": "Head Agent",
+    "michaelberglund": "Michael Berglund",
+    "mason": "Mason",
+    "hammerhanborg": "Hammer & Hanborg",
+    "novare": "Novare",
+    "platsbanken": "Platsbanken (Arbetsförmedlingen)",
+}
 
 
-def send_digest(jobs: list[dict]):
-    if not jobs:
-        print("[INFO] No new matching jobs today. No email sent.")
-        return
-
-    password = os.environ.get("GMAIL_APP_PASSWORD")
-    if not password:
-        raise ValueError("GMAIL_APP_PASSWORD environment variable not set.")
-
+def _build_html(jobs: list[dict]) -> str:
+    """Build the HTML body for a digest email."""
     # Group by source
-    by_source = {}
+    by_source: dict[str, list[dict]] = {}
     for job in jobs:
         by_source.setdefault(job["source"], []).append(job)
 
-    # Build HTML
     today = date.today().strftime("%d %b %Y")
-    html_parts = [f"""
-    <html><body style="font-family: Arial, sans-serif; max-width: 700px; margin: auto; color: #333;">
-    <h2 style="color:#1a1a2e;">📋 Job Digest — {today}</h2>
-    <p>{len(jobs)} new matching position(s) found today.</p>
-    <hr>
-    """]
 
-    source_labels = {
-        "capa": "CAPA",
-        "interimsearch": "Interim Search",
-        "wise": "Wise",
-        "headagent": "Head Agent",
-        "michaelberglund": "Michael Berglund",
-        "mason": "Mason",
-        "hammerhanborg": "Hammer & Hanborg",
-        "novare": "Novare",
-        "platsbanken": "Platsbanken (Arbetsförmedlingen)",
-    }
+    parts = [
+        '<html><body style="font-family: Arial, sans-serif; '
+        'max-width: 700px; margin: auto; color: #333;">',
+        f'<h2 style="color:#1a1a2e;">📋 Job Digest — {today}</h2>',
+        f"<p>{len(jobs)} new matching position(s).</p>",
+        "<hr>",
+    ]
 
     for source, source_jobs in by_source.items():
-        label = source_labels.get(source, source.title())
-        html_parts.append(f'<h3 style="color:#444; border-bottom:1px solid #ddd; padding-bottom:4px;">{label}</h3><ul>')
+        label = SOURCE_LABELS.get(source, source.title())
+        parts.append(
+            f'<h3 style="color:#444; border-bottom:1px solid #ddd; '
+            f'padding-bottom:4px;">{label}</h3><ul>'
+        )
         for job in source_jobs:
-            company_str = f" — {job['company']}" if job.get("company") and job["company"] != label else ""
-            html_parts.append(
-                f'<li style="margin-bottom:8px;">'
-                f'<a href="{job["url"]}" style="color:#0057b8; font-weight:bold;">{job["title"]}</a>'
-                f'{company_str}'
-                f'</li>'
+            company_str = (
+                f" — {job['company']}"
+                if job.get("company") and job["company"] != label
+                else ""
             )
-        html_parts.append("</ul>")
+            parts.append(
+                f'<li style="margin-bottom:8px;">'
+                f'<a href="{job["url"]}" style="color:#0057b8; '
+                f'font-weight:bold;">{job["title"]}</a>'
+                f"{company_str}"
+                f"</li>"
+            )
+        parts.append("</ul>")
 
-    html_parts.append("<hr><p style='font-size:12px;color:#999;'>Job Monitor · runs daily via GitHub Actions</p></body></html>")
-    html = "".join(html_parts)
+    parts.append(
+        "<hr>"
+        '<p style="font-size:12px;color:#999;">'
+        "Nordic Executive List · your personalized job digest"
+        "</p>"
+        "</body></html>"
+    )
+    return "".join(parts)
 
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"{EMAIL_SUBJECT} — {today} ({len(jobs)} new)"
-    msg["From"] = EMAIL_SENDER
-    msg["To"] = EMAIL_RECIPIENT
-    msg.attach(MIMEText(html, "html"))
 
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-        server.login(EMAIL_SENDER, password)
-        server.sendmail(EMAIL_SENDER, EMAIL_RECIPIENT, msg.as_string())
+def send_digest(jobs: list[dict], recipient_email: str) -> bool:
+    """Send an HTML digest email to a single user via SendGrid.
 
-    print(f"[INFO] Email sent with {len(jobs)} jobs.")
+    Returns True on success, False on failure (so the caller can decide
+    whether to mark the queue entries as sent).
+    """
+    if not jobs:
+        return False
+
+    api_key = os.environ.get("SENDGRID_API_KEY")
+    if not api_key:
+        print("[ERROR] SENDGRID_API_KEY environment variable not set.")
+        return False
+
+    from_email = os.environ.get("SENDGRID_FROM_EMAIL", "noreply@nordicexecutivelist.com")
+    today = date.today().strftime("%d %b %Y")
+    subject = f"📋 Job Digest — {today} ({len(jobs)} new)"
+
+    html = _build_html(jobs)
+
+    message = Mail(
+        from_email=Email(from_email, "Nordic Executive List"),
+        to_emails=To(recipient_email),
+        subject=subject,
+        html_content=Content("text/html", html),
+    )
+
+    try:
+        sg = SendGridAPIClient(api_key)
+        response = sg.send(message)
+        if response.status_code in (200, 201, 202):
+            return True
+        print(
+            f"[WARN] SendGrid returned {response.status_code} "
+            f"for {recipient_email}"
+        )
+        return False
+    except Exception as e:
+        print(f"[ERROR] SendGrid failed for {recipient_email}: {e}")
+        return False

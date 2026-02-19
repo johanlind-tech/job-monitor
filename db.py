@@ -5,6 +5,7 @@ Uses the service-role key so the scraper pipeline bypasses RLS.
 """
 
 import os
+from datetime import datetime, timezone
 from supabase import create_client, Client
 
 _client: Client | None = None
@@ -131,3 +132,76 @@ def batch_insert_queue_entries(entries: list[dict]) -> int:
         .execute()
     )
     return len(result.data)
+
+
+# ── Digest delivery ──────────────────────────────────────────────────────────
+
+
+def fetch_digest_recipients(today_weekday: int) -> list[dict]:
+    """Return users who should receive a digest today.
+
+    Parameters
+    ----------
+    today_weekday : int
+        ISO weekday (1 = Monday … 7 = Sunday).
+
+    Returns
+    -------
+    list[dict]
+        Each dict has keys ``user_id`` (str) and ``email`` (str).
+    """
+    client = _get_client()
+    result = (
+        client.table("user_preferences")
+        .select(
+            "user_id, delivery_days, "
+            "profiles!inner(email, subscription_status)"
+        )
+        .in_("profiles.subscription_status", ["active", "trialing"])
+        .contains("delivery_days", [today_weekday])
+        .execute()
+    )
+    recipients = []
+    for row in result.data:
+        email = row.get("profiles", {}).get("email")
+        if email:
+            recipients.append({"user_id": row["user_id"], "email": email})
+    return recipients
+
+
+def fetch_unsent_jobs_for_user(user_id: str) -> list[dict]:
+    """Return all queued-but-unsent jobs for a user, with full job details.
+
+    Returns a list of dicts with keys: id, title, company, url, source.
+    """
+    client = _get_client()
+    result = (
+        client.table("user_job_queue")
+        .select("job_id, jobs(id, title, company, url, source)")
+        .eq("user_id", user_id)
+        .is_("sent_at", "null")
+        .execute()
+    )
+    # Flatten the nested jobs object
+    jobs = []
+    for row in result.data:
+        job = row.get("jobs")
+        if job:
+            jobs.append(job)
+    return jobs
+
+
+def mark_queue_sent(user_id: str, job_ids: list[str]):
+    """Set sent_at = now() for the given user + job_id combinations."""
+    if not job_ids:
+        return
+    client = _get_client()
+    now = datetime.now(timezone.utc).isoformat()
+    (
+        client.table("user_job_queue")
+        .update({"sent_at": now})
+        .eq("user_id", user_id)
+        .in_("job_id", job_ids)
+        .is_("sent_at", "null")
+        .execute()
+    )
