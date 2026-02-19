@@ -41,11 +41,10 @@ def job_matches_user(job: dict, prefs: dict) -> bool:
     text = f"{job.get('title', '')} {job.get('description', '')}".lower()
 
     # 1a. Country ──────────────────────────────────────────────────────────
-    countries = prefs.get("countries") or []
-    if countries:
-        job_country = job.get("country") or "SE"
-        if job_country not in countries:
-            return False
+    countries = prefs.get("countries") or ["SE"]  # default to Sweden only
+    job_country = job.get("country") or "SE"
+    if job_country not in countries:
+        return False
 
     # 1b. Source ───────────────────────────────────────────────────────────
     sources = prefs.get("sources_enabled") or []

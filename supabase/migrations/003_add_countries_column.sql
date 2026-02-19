@@ -1,7 +1,7 @@
 -- Add countries filter column to user_preferences.
--- Empty array means "all countries" (same convention as sources_enabled).
+-- Defaults to Sweden only; users opt in to DK/NO.
 ALTER TABLE user_preferences
-  ADD COLUMN IF NOT EXISTS countries text[] DEFAULT '{}';
+  ADD COLUMN IF NOT EXISTS countries text[] DEFAULT '{SE}';
 
 -- Add country column to jobs table (defaults to SE for backward compat).
 -- Already exists in some environments; IF NOT EXISTS prevents errors.
