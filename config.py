@@ -27,6 +27,18 @@ KEYWORDS_EXCLUDE = [
     "assisterande", "assistent",
 ]
 
+# Map each source to its primary country. Default is SE (Sweden).
+# Used by the pipeline to tag jobs with the correct country code.
+SOURCE_COUNTRY: dict[str, str] = {
+    # Denmark
+    "nigel_wright": "DK",     # Nigel Wright Nordics (DK-based)
+    # Norway
+    "bonesvirik": "NO",
+    "visindi": "NO",
+    # International / multi-country sources default to SE unless
+    # location parsing overrides it later.
+}
+
 SITES = [
     "capa",
     "interimsearch",

@@ -12,6 +12,7 @@ from db import (
     fetch_digest_recipients, fetch_unsent_jobs_for_user, mark_queue_sent,
 )
 from scrapers import ALL_SCRAPERS
+from config import SOURCE_COUNTRY
 from filter import job_matches_user
 from email_sender import send_digest
 from location_parser import parse_location
@@ -19,7 +20,11 @@ from employment_type_parser import parse_employment_type
 
 
 def enrich(job: dict) -> dict:
-    """Add location and employment_type fields to a scraped job dict."""
+    """Add location, country and employment_type fields to a scraped job dict."""
+
+    # ── Country ───────────────────────────────────────────────────────────
+    source = job.get("source", "")
+    job["country"] = SOURCE_COUNTRY.get(source, "SE")
 
     # ── Location ─────────────────────────────────────────────────────────
     loc = parse_location(

@@ -40,7 +40,14 @@ def job_matches_user(job: dict, prefs: dict) -> bool:
     # Build searchable text once (title always present; description may be absent)
     text = f"{job.get('title', '')} {job.get('description', '')}".lower()
 
-    # 1. Source ────────────────────────────────────────────────────────────
+    # 1a. Country ──────────────────────────────────────────────────────────
+    countries = prefs.get("countries") or []
+    if countries:
+        job_country = job.get("country") or "SE"
+        if job_country not in countries:
+            return False
+
+    # 1b. Source ───────────────────────────────────────────────────────────
     sources = prefs.get("sources_enabled") or []
     if sources and job.get("source") not in sources:
         return False
