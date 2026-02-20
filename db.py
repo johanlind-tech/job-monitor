@@ -158,7 +158,7 @@ def fetch_digest_recipients(today_weekday: int) -> list[dict]:
             "profiles!inner(email, subscription_status)"
         )
         .in_("profiles.subscription_status", ["active", "trialing"])
-        .contains("delivery_days", [today_weekday])
+        .contains("delivery_days", [str(today_weekday)])
         .execute()
     )
     recipients = []
