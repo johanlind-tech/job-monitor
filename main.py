@@ -4,12 +4,7 @@ employment type, upserts into the Supabase jobs table, queues matching
 jobs for each active user, then sends email digests via SendGrid.
 """
 
-import os
 from datetime import date
-
-# Debug: check which env vars Railway injects
-print(f"[DEBUG] SUPABASE_URL present: {'SUPABASE_URL' in os.environ}")
-print(f"[DEBUG] Env var names: {[k for k in sorted(os.environ.keys()) if not k.startswith('_')]}")
 
 from db import (
     init_db, is_seen, mark_seen,
