@@ -66,6 +66,12 @@ def _build_html(jobs: list[dict]) -> str:
 
     parts.append(
         "<hr>"
+        '<p style="font-size:13px;color:#666;line-height:1.6;">'
+        "Not seeing the right roles? "
+        '<a href="https://nordicexecutivelist.com/preferences" '
+        'style="color:#0057b8;">Adjust your preferences</a> '
+        "to fine-tune your digest."
+        "</p>"
         '<p style="font-size:12px;color:#999;">'
         "Nordic Executive List · your personalized job digest"
         "</p>"
