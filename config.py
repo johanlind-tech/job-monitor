@@ -83,4 +83,14 @@ SITES = [
     "levelrecruitment",
     "performiq",
     "safemind",
+    # Batch 3
+    "hays",
+    "people360",
+    "hudsonnordic",
+    "humancapital",
+    "kornferry_interim",
+    "kornferry",
+    "mercuriurval",
+    "needo",
+    "andpartners",
 ]

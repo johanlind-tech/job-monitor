@@ -1090,6 +1090,225 @@ def scrape_safemind() -> list[dict]:
     return jobs
 
 
+# ── HAYS ───────────────────────────────────────────────────────────────────
+def scrape_hays() -> list[dict]:
+    """Hays SE — Angular SSR, jobs pre-rendered in HTML."""
+    url = (
+        "https://www.hays.se/jobb-sokning?"
+        "q=&location=&specialismId=&subSpecialismId="
+        "&locationf=&industryf=&sortType=0&jobType=-1"
+        "&flexiWorkType=-1&payTypefacet=-1&minPay=-1&maxPay=-1"
+        "&jobSource=HaysGCJ"
+    )
+    soup = _get(url)
+    if not soup:
+        return []
+    jobs = []
+    for a in soup.select("a#gtm_job_redirecttodetail"):
+        title = a.get_text(strip=True)
+        href = a.get("href", "")
+        if not href or not title or len(title) < 5:
+            continue
+        if not href.startswith("http"):
+            href = "https://www.hays.se" + href
+        # Strip tracking query params, keep just the path
+        clean = href.split("?")[0]
+        jobs.append({"id": _make_id(clean), "title": title, "company": "Hays", "url": clean, "source": "hays"})
+    return jobs
+
+
+# ── PEOPLE 360 ─────────────────────────────────────────────────────────────
+def scrape_people360() -> list[dict]:
+    """People 360 — Teamtailor career site with RSS feed."""
+    try:
+        r = requests.get("https://career.people360.se/jobs.rss", headers=HEADERS, timeout=15)
+        r.raise_for_status()
+    except Exception as e:
+        print(f"[WARN] Failed to fetch people360 RSS: {e}")
+        return []
+    soup = BeautifulSoup(r.text, "xml")
+    jobs = []
+    for item in soup.find_all("item"):
+        title_el = item.find("title")
+        link_el = item.find("link")
+        if not title_el or not link_el:
+            continue
+        title = title_el.get_text(strip=True)
+        href = link_el.get_text(strip=True)
+        if not title or not href or len(title) < 5:
+            continue
+        jobs.append({"id": _make_id(href), "title": title, "company": "People 360", "url": href, "source": "people360"})
+    return jobs
+
+
+# ── HUDSON NORDIC ──────────────────────────────────────────────────────────
+def scrape_hudsonnordic() -> list[dict]:
+    """Hudson Nordic — WordPress/Elementor Loop Grid."""
+    soup = _get("https://se.hudsonnordic.com/jobs/")
+    if not soup:
+        return []
+    jobs = []
+    for card in soup.select(".e-loop-item"):
+        title_el = card.select_one(".elementor-heading-title")
+        link_el = card.select_one('a.elementor-button[href*="/jobs/"]')
+        if not title_el or not link_el:
+            continue
+        title = title_el.get_text(strip=True)
+        href = link_el.get("href", "")
+        if not href or not title or len(title) < 5:
+            continue
+        if not href.startswith("http"):
+            href = "https://se.hudsonnordic.com" + href
+        jobs.append({"id": _make_id(href), "title": title, "company": "Hudson Nordic", "url": href, "source": "hudsonnordic"})
+    return jobs
+
+
+# ── HUMAN CAPITAL ──────────────────────────────────────────────────────────
+def scrape_humancapital() -> list[dict]:
+    """Human Capital — SSR with data-* attributes on job cards."""
+    soup = _get("https://humancapital.se/lediga-jobb/")
+    if not soup:
+        return []
+    jobs = []
+    for card in soup.select("div.ngs-joboverview-card"):
+        job_name = card.get("data-jobname", "")
+        job_id = card.get("data-jobid", "")
+        if not job_name or not job_id:
+            continue
+        href = f"https://apply.recman.no/job_post.php?id={job_id}"
+        jobs.append({"id": _make_id(href), "title": job_name, "company": "Human Capital", "url": href, "source": "humancapital"})
+    return jobs
+
+
+# ── KORN FERRY INTERIM ─────────────────────────────────────────────────────
+def scrape_kornferry_interim() -> list[dict]:
+    """Korn Ferry Interim — WordPress SSR, all jobs on one page."""
+    soup = _get("https://interimjobs.kornferry.com/jobs/search")
+    if not soup:
+        return []
+    jobs = []
+    for card in soup.select("div.job-listing"):
+        title_el = card.select_one("h2.job-title a")
+        if not title_el:
+            continue
+        title = title_el.get_text(strip=True)
+        href = title_el.get("href", "")
+        if not href or not title or len(title) < 5:
+            continue
+        if not href.startswith("http"):
+            href = "https://interimjobs.kornferry.com" + href
+        jobs.append({"id": _make_id(href), "title": title, "company": "Korn Ferry Interim", "url": href, "source": "kornferry_interim"})
+    return jobs
+
+
+# ── KORN FERRY ─────────────────────────────────────────────────────────────
+def scrape_kornferry() -> list[dict]:
+    """Korn Ferry candidate jobs — table-based SSR (page 1 only, 25 jobs)."""
+    soup = _get("https://jobs.candidate.kornferry.com/jobs")
+    if not soup:
+        return []
+    jobs = []
+    for a in soup.select("#jobResults a.joblink"):
+        span = a.select_one("span.link")
+        if not span:
+            continue
+        # Title is the first text node (not child spans which have location/date)
+        title = ""
+        for child in span.children:
+            if isinstance(child, str):
+                title = child.strip()
+                if title:
+                    break
+        href = a.get("href", "")
+        if not href or not title or len(title) < 5:
+            continue
+        if not href.startswith("http"):
+            href = "https://jobs.candidate.kornferry.com" + href
+        jobs.append({"id": _make_id(href), "title": title, "company": "Korn Ferry", "url": href, "source": "kornferry"})
+    return jobs
+
+
+# ── MERCURI URVAL ──────────────────────────────────────────────────────────
+def scrape_mercuriurval() -> list[dict]:
+    """Mercuri Urval — JS-rendered job list. Try SSR HTML first; the job cards
+    are injected by server-side JS so they may appear in the initial fetch
+    with proper headers."""
+    try:
+        r = requests.get(
+            "https://www.mercuriurval.com/sv-se/our-opportunities/?q=",
+            headers={**HEADERS, "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"},
+            timeout=20,
+        )
+        r.raise_for_status()
+        soup = BeautifulSoup(r.text, "html.parser")
+    except Exception as e:
+        print(f"[WARN] Failed to fetch mercuriurval.com: {e}")
+        return []
+    jobs = []
+    for li in soup.select("li.search-result-item"):
+        a = li.find("a", href=True)
+        h3 = li.find("h3")
+        if not a or not h3:
+            continue
+        title = h3.get_text(strip=True)
+        href = a.get("href", "")
+        if not href or not title or len(title) < 5:
+            continue
+        if not href.startswith("http"):
+            href = "https://www.mercuriurval.com" + href
+        jobs.append({"id": _make_id(href), "title": title, "company": "Mercuri Urval", "url": href, "source": "mercuriurval"})
+    return jobs
+
+
+# ── NEEDO ──────────────────────────────────────────────────────────────────
+def scrape_needo() -> list[dict]:
+    """Needo — WordPress REST API for custom post type lediga_jobb."""
+    try:
+        r = requests.get(
+            "https://needo.se/wp-json/wp/v2/lediga_jobb",
+            params={"per_page": 100},
+            headers=HEADERS,
+            timeout=15,
+        )
+        r.raise_for_status()
+        data = r.json()
+    except Exception as e:
+        print(f"[WARN] Failed to fetch needo.se REST API: {e}")
+        return []
+    jobs = []
+    for item in data:
+        title = item.get("title", {}).get("rendered", "")
+        href = item.get("link", "")
+        if not title or not href or len(title) < 5:
+            continue
+        # Unescape HTML entities in title
+        title = BeautifulSoup(title, "html.parser").get_text(strip=True)
+        jobs.append({"id": _make_id(href), "title": title, "company": "Needo", "url": href, "source": "needo"})
+    return jobs
+
+
+# ── &PARTNERS ─────────────────────────────────────────────────────────────
+def scrape_andpartners() -> list[dict]:
+    """&Partners — simple WordPress with article.post--job cards."""
+    soup = _get("https://www.andpartners.se/lediga-tjanster/")
+    if not soup:
+        return []
+    jobs = []
+    for card in soup.select("article.post--job"):
+        a = card.select_one("a")
+        h3 = card.select_one("h3")
+        if not a or not h3:
+            continue
+        title = h3.get_text(strip=True)
+        href = a.get("href", "")
+        if not href or not title or len(title) < 5:
+            continue
+        if not href.startswith("http"):
+            href = "https://www.andpartners.se" + href
+        jobs.append({"id": _make_id(href), "title": title, "company": "&Partners", "url": href, "source": "andpartners"})
+    return jobs
+
+
 # ── REGISTRY ──────────────────────────────────────────────────────────────────
 ALL_SCRAPERS = [
     scrape_capa,
@@ -1135,4 +1354,14 @@ ALL_SCRAPERS = [
     scrape_levelrecruitment,
     scrape_performiq,
     scrape_safemind,
+    # Batch 3
+    scrape_hays,
+    scrape_people360,
+    scrape_hudsonnordic,
+    scrape_humancapital,
+    scrape_kornferry_interim,
+    scrape_kornferry,
+    scrape_mercuriurval,
+    scrape_needo,
+    scrape_andpartners,
 ]
