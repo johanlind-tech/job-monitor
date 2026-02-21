@@ -131,8 +131,10 @@ def _build_html(jobs: list[dict]) -> str:
 </td></tr>
 """
 
-    # ── Job cards grouped by source ──────────────────────────────────────
-    for source, source_jobs in by_source.items():
+    # ── Job cards grouped by source (Platsbanken always last) ───────────
+    sorted_sources = sorted(by_source.keys(), key=lambda s: (s == "platsbanken", s))
+    for source in sorted_sources:
+        source_jobs = by_source[source]
         label = SOURCE_LABELS.get(source, source.replace("_", " ").title())
 
         html += f"""\
