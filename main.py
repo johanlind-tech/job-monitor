@@ -4,7 +4,15 @@ employment type, upserts into the Supabase jobs table, queues matching
 jobs for each active user, then sends email digests via SendGrid.
 """
 
+import os
 from datetime import date
+
+# Debug: check key format
+_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+print(f"[DEBUG] Key length: {len(_key)}")
+print(f"[DEBUG] Key starts with: {_key[:20]}...")
+print(f"[DEBUG] Key ends with: ...{_key[-10:]}")
+print(f"[DEBUG] URL: {os.environ.get('SUPABASE_URL', 'NOT SET')}")
 
 from db import (
     init_db, is_seen, mark_seen,
