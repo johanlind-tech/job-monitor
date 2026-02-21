@@ -69,4 +69,18 @@ SITES = [
     "bonesvirik",
     "visindi",
     "vindex",
+    # Batch 2
+    "executive",
+    "cip",
+    "trib",
+    "mesh",
+    "brightpeople",
+    "bondi",
+    "basedonpeople",
+    "bohmans",
+    "addpeople",
+    "compasshrg",
+    "levelrecruitment",
+    "performiq",
+    "safemind",
 ]

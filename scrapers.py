@@ -747,6 +747,349 @@ def scrape_vindex() -> list[dict]:
     return jobs
 
 
+# ── EXECUTIVE ───────────────────────────────────────────────────────────────
+def scrape_executive() -> list[dict]:
+    soup = _get("https://executive.se/lediga-tjanster/")
+    if not soup:
+        return []
+    jobs = []
+    seen = set()
+    for a in soup.select("a[href*='/lediga-tjanster/']"):
+        href = a.get("href", "")
+        if not href:
+            continue
+        if not href.startswith("http"):
+            href = "https://executive.se" + href
+        # Skip the main listing page itself
+        if href.rstrip("/") in ("https://executive.se/lediga-tjanster",):
+            continue
+        if href in seen:
+            continue
+        seen.add(href)
+        title = a.get_text(strip=True)
+        if not title or len(title) < 5:
+            continue
+        jobs.append({"id": _make_id(href), "title": title, "company": "Executive", "url": href, "source": "executive"})
+    return jobs
+
+
+# ── CIP SEARCH ──────────────────────────────────────────────────────────────
+def scrape_cip() -> list[dict]:
+    soup = _get("https://career.cip-search.com/jobs")
+    if not soup:
+        return []
+    jobs = []
+    for a in soup.select("a[href*='/jobs/']"):
+        href = a.get("href", "")
+        if not href:
+            continue
+        if not href.startswith("http"):
+            href = "https://career.cip-search.com" + href
+        # Teamtailor: clean title is in span.text-block-base-link
+        title_el = a.select_one("span.text-block-base-link, [class*='text-block-base']")
+        title = title_el.get_text(strip=True) if title_el else a.get_text(strip=True)
+        if not title or len(title) < 5:
+            continue
+        jobs.append({"id": _make_id(href), "title": title, "company": "CIP Search", "url": href, "source": "cip"})
+    return jobs
+
+
+# ── TRIB ────────────────────────────────────────────────────────────────────
+def scrape_trib() -> list[dict]:
+    soup = _get("https://www.trib.se/live-jobs/")
+    if not soup:
+        return []
+    jobs = []
+    seen = set()
+    for a in soup.select("a[href*='/jobs/']"):
+        href = a.get("href", "")
+        if not href:
+            continue
+        if not href.startswith("http"):
+            href = "https://www.trib.se" + href
+        if href in seen:
+            continue
+        seen.add(href)
+        # Title is in h3 inside the link
+        h = a.find(["h3", "h2", "h4"])
+        title = h.get_text(strip=True) if h else a.get_text(strip=True)
+        if not title or len(title) < 5:
+            continue
+        # Company is in a <p> sibling after the h3
+        company_el = a.find("p")
+        company = company_el.get_text(strip=True) if company_el else "Trib"
+        jobs.append({"id": _make_id(href), "title": title, "company": company, "url": href, "source": "trib"})
+    return jobs
+
+
+# ── MESH PEOPLE ─────────────────────────────────────────────────────────────
+def scrape_mesh() -> list[dict]:
+    """Mesh People embeds Teamtailor links (konsult.meshab.se) on their page."""
+    soup = _get("https://meshpeople.se/aktuella-uppdrag-hos-mesh/")
+    if not soup:
+        return []
+    jobs = []
+    seen = set()
+    for a in soup.select("a[href*='konsult.meshab.se/jobs/']"):
+        href = a.get("href", "")
+        if not href or href in seen:
+            continue
+        seen.add(href)
+        # Extract title from URL slug: /jobs/7267773-interim-salesforce-...
+        slug = href.rstrip("/").split("/")[-1]
+        parts = slug.split("-", 1)
+        title = parts[1].replace("-", " ").title() if len(parts) > 1 else slug.replace("-", " ").title()
+        if len(title) < 5:
+            continue
+        jobs.append({"id": _make_id(href), "title": title, "company": "Mesh People", "url": href, "source": "mesh"})
+    return jobs
+
+
+# ── BRIGHT PEOPLE ───────────────────────────────────────────────────────────
+def scrape_brightpeople() -> list[dict]:
+    """Bright People is a Wix site; use the RSS feed to avoid JS rendering."""
+    try:
+        r = requests.get("https://www.brightpeople.se/blog-feed.xml", headers=HEADERS, timeout=15)
+        r.raise_for_status()
+    except Exception as e:
+        print(f"[WARN] Failed to fetch brightpeople.se RSS: {e}")
+        return []
+    soup = BeautifulSoup(r.text, "xml")
+    jobs = []
+    for item in soup.find_all("item"):
+        # Only include active assignments, skip completed ones
+        cat = item.find("category")
+        if cat and "avslutade" in cat.get_text(strip=True).lower():
+            continue
+        title_el = item.find("title")
+        link_el = item.find("link")
+        if not title_el or not link_el:
+            continue
+        title = title_el.get_text(strip=True)
+        href = link_el.get_text(strip=True)
+        if not title or not href or len(title) < 5:
+            continue
+        jobs.append({"id": _make_id(href), "title": title, "company": "Bright People", "url": href, "source": "brightpeople"})
+    return jobs
+
+
+# ── BONDI ───────────────────────────────────────────────────────────────────
+def scrape_bondi() -> list[dict]:
+    soup = _get("https://www.bondi.se/publika-uppdrag")
+    if not soup:
+        return []
+    jobs = []
+    seen = set()
+    # Brizy builder: job titles in h3 inside a.brz-a links, or generic links
+    for a in soup.select("a[href]"):
+        href = a.get("href", "")
+        if not href:
+            continue
+        if not href.startswith("http"):
+            href = "https://www.bondi.se" + href
+        # Skip known non-job pages
+        if any(skip in href for skip in ("/publika-uppdrag", "/kontakt", "/om-oss", "/tjanster", "/karriar", "#")):
+            continue
+        # Only consider links under the bondi.se domain
+        if "bondi.se" not in href:
+            continue
+        if href in seen:
+            continue
+        seen.add(href)
+        h = a.find(["h3", "h2", "h4"])
+        title = h.get_text(strip=True) if h else a.get_text(strip=True)
+        if not title or len(title) < 5:
+            continue
+        # Skip navigation-like text
+        if title.lower() in ("hem", "om oss", "kontakt", "tjänster", "karriär", "publika uppdrag"):
+            continue
+        jobs.append({"id": _make_id(href), "title": title, "company": "Bondi", "url": href, "source": "bondi"})
+    return jobs
+
+
+# ── BASED ON PEOPLE ─────────────────────────────────────────────────────────
+def scrape_basedonpeople() -> list[dict]:
+    soup = _get("https://www.basedonpeople.se/publika-uppdrag")
+    if not soup:
+        return []
+    jobs = []
+    seen = set()
+    for a in soup.select("a[href*='/job-posts/']"):
+        href = a.get("href", "")
+        if not href:
+            continue
+        if not href.startswith("http"):
+            href = "https://www.basedonpeople.se" + href
+        if href in seen:
+            continue
+        seen.add(href)
+        h = a.find(["h3", "h2", "h4"])
+        title = h.get_text(strip=True) if h else a.get_text(strip=True)
+        if not title or len(title) < 5:
+            continue
+        jobs.append({"id": _make_id(href), "title": title, "company": "Based on People", "url": href, "source": "basedonpeople"})
+    return jobs
+
+
+# ── BOHMANS BÄTVERK ─────────────────────────────────────────────────────────
+def scrape_bohmans() -> list[dict]:
+    soup = _get("https://www.bohmans.com/aktuellauppdrag/")
+    if not soup:
+        return []
+    jobs = []
+    seen = set()
+    for a in soup.select("a[href*='/aktuellauppdrag/']"):
+        href = a.get("href", "")
+        if not href:
+            continue
+        if not href.startswith("http"):
+            href = "https://www.bohmans.com" + href
+        # Skip the main listing page itself
+        if href.rstrip("/") in ("https://www.bohmans.com/aktuellauppdrag",):
+            continue
+        if href in seen:
+            continue
+        seen.add(href)
+        title = a.get_text(strip=True)
+        if not title or len(title) < 5:
+            continue
+        jobs.append({"id": _make_id(href), "title": title, "company": "Bohmans Bätverk", "url": href, "source": "bohmans"})
+    return jobs
+
+
+# ── ADDPEOPLE ───────────────────────────────────────────────────────────────
+def scrape_addpeople() -> list[dict]:
+    soup = _get("https://addpeople.teamtailor.com/jobs")
+    if not soup:
+        return []
+    jobs = []
+    for a in soup.select("a[href*='/jobs/']"):
+        href = a.get("href", "")
+        if not href:
+            continue
+        if not href.startswith("http"):
+            href = "https://addpeople.teamtailor.com" + href
+        # Teamtailor: clean title is in span.text-block-base-link
+        title_el = a.select_one("span.text-block-base-link, [class*='text-block-base']")
+        title = title_el.get_text(strip=True) if title_el else a.get_text(strip=True)
+        if not title or len(title) < 5:
+            continue
+        jobs.append({"id": _make_id(href), "title": title, "company": "AddPeople", "url": href, "source": "addpeople"})
+    return jobs
+
+
+# ── COMPASS HRG ─────────────────────────────────────────────────────────────
+def scrape_compasshrg() -> list[dict]:
+    soup = _get("https://www.compasshrg.com/sv/jobs/?job__location_spec=sweden")
+    if not soup:
+        return []
+    jobs = []
+    seen = set()
+    for a in soup.select("a[href*='/sv/job/']"):
+        href = a.get("href", "")
+        if not href:
+            continue
+        if not href.startswith("http"):
+            href = "https://www.compasshrg.com" + href
+        if href in seen:
+            continue
+        seen.add(href)
+        h = a.find(["h3", "h2", "h4"])
+        title = h.get_text(strip=True) if h else a.get_text(strip=True)
+        if not title or len(title) < 5:
+            continue
+        jobs.append({"id": _make_id(href), "title": title, "company": "Compass HRG", "url": href, "source": "compasshrg"})
+    return jobs
+
+
+# ── LEVEL RECRUITMENT ───────────────────────────────────────────────────────
+def scrape_levelrecruitment() -> list[dict]:
+    soup = _get("https://levelrecruitment.se/lediga-jobb/")
+    if not soup:
+        return []
+    jobs = []
+    seen = set()
+    for a in soup.select("a[href*='/lediga-jobb/']"):
+        href = a.get("href", "")
+        if not href:
+            continue
+        if not href.startswith("http"):
+            href = "https://levelrecruitment.se" + href
+        # Skip the main listing page link itself
+        if href.rstrip("/") == "https://levelrecruitment.se/lediga-jobb":
+            continue
+        if href in seen:
+            continue
+        seen.add(href)
+        title = a.get_text(strip=True)
+        if not title or len(title) < 5:
+            continue
+        # Skip generic "Läs mer" buttons
+        if title.lower() in ("läs mer", "load more", "visa fler"):
+            continue
+        jobs.append({"id": _make_id(href), "title": title, "company": "Level Recruitment", "url": href, "source": "levelrecruitment"})
+    return jobs
+
+
+# ── PERFORMIQ ───────────────────────────────────────────────────────────────
+def scrape_performiq() -> list[dict]:
+    soup = _get("https://performiq.se/lediga-jobb/")
+    if not soup:
+        return []
+    jobs = []
+    seen = set()
+    for a in soup.select("a[href*='/lediga-jobb/']"):
+        href = a.get("href", "")
+        if not href:
+            continue
+        if not href.startswith("http"):
+            href = "https://performiq.se" + href
+        # Skip the main listing page link itself
+        if href.rstrip("/") == "https://performiq.se/lediga-jobb":
+            continue
+        if href in seen:
+            continue
+        seen.add(href)
+        title = a.get_text(strip=True)
+        if not title or len(title) < 5:
+            continue
+        if title.lower() in ("läs mer", "visa fler", "lediga jobb"):
+            continue
+        jobs.append({"id": _make_id(href), "title": title, "company": "PerformIQ", "url": href, "source": "performiq"})
+    return jobs
+
+
+# ── SAFEMIND ────────────────────────────────────────────────────────────────
+def scrape_safemind() -> list[dict]:
+    soup = _get("https://www.safemind.se/lediga-jobb-tjanster/")
+    if not soup:
+        return []
+    jobs = []
+    seen = set()
+    for a in soup.select("a[href*='/lediga-jobb/']"):
+        href = a.get("href", "")
+        if not href:
+            continue
+        if not href.startswith("http"):
+            href = "https://www.safemind.se" + href
+        # Skip the main listing page link
+        if href.rstrip("/") in (
+            "https://www.safemind.se/lediga-jobb",
+            "https://www.safemind.se/lediga-jobb-tjanster",
+        ):
+            continue
+        if href in seen:
+            continue
+        seen.add(href)
+        title = a.get_text(strip=True)
+        if not title or len(title) < 5:
+            continue
+        if title.lower() in ("läs mer", "visa fler", "lediga jobb"):
+            continue
+        jobs.append({"id": _make_id(href), "title": title, "company": "SafeMind", "url": href, "source": "safemind"})
+    return jobs
+
+
 # ── REGISTRY ──────────────────────────────────────────────────────────────────
 ALL_SCRAPERS = [
     scrape_capa,
@@ -778,4 +1121,18 @@ ALL_SCRAPERS = [
     scrape_bonesvirik,
     scrape_visindi,
     scrape_vindex,
+    # Batch 2
+    scrape_executive,
+    scrape_cip,
+    scrape_trib,
+    scrape_mesh,
+    scrape_brightpeople,
+    scrape_bondi,
+    scrape_basedonpeople,
+    scrape_bohmans,
+    scrape_addpeople,
+    scrape_compasshrg,
+    scrape_levelrecruitment,
+    scrape_performiq,
+    scrape_safemind,
 ]

@@ -155,10 +155,7 @@ BEGIN
             'Affärsutvecklingsdirektör','Försäljningsdirektör'
         ],
         ARRAY['junior','assistant','coordinator','assisterande','assistent'],
-        ARRAY[
-            'capa','interimsearch','wise','headagent','michaelberglund',
-            'mason','hammerhanborg','novare','platsbanken'
-        ],
+        '{}',   -- sources_enabled: empty = all sources
         '{}',   -- regions: empty = all
         '{}',   -- municipalities: empty = all
         '{"permanent","interim"}'
