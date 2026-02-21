@@ -6,15 +6,37 @@ Job-matching filters.
   insertion time. Checks all six preference dimensions.
 """
 
+import re
+from functools import lru_cache
+
 from config import KEYWORDS_INCLUDE, KEYWORDS_EXCLUDE
+
+
+@lru_cache(maxsize=512)
+def _word_re(keyword: str) -> re.Pattern:
+    """Compile a case-insensitive whole-word regex for *keyword*.
+
+    Uses \\b (word boundary) so that e.g. "VD" matches "VD" and "VD,"
+    but NOT "avdelning".  For multi-word phrases like "Vice President"
+    each space becomes \\s+, so "Vice  President" still matches.
+    """
+    escaped = re.escape(keyword)
+    # Allow flexible whitespace inside multi-word phrases
+    pattern = r"\s+".join(escaped.split(r"\ "))
+    return re.compile(rf"\b{pattern}\b", re.IGNORECASE)
+
+
+def _kw_in_text(keyword: str, text: str) -> bool:
+    """Return True if *keyword* appears as a whole word in *text*."""
+    return _word_re(keyword).search(text) is not None
 
 
 def matches(job: dict) -> bool:
     """Return True if job matches global include/exclude keywords."""
-    text = f"{job.get('title', '')} {job.get('description', '')}".lower()
+    text = f"{job.get('title', '')} {job.get('description', '')}"
 
-    has_include = any(kw.lower() in text for kw in KEYWORDS_INCLUDE)
-    has_exclude = any(kw.lower() in text for kw in KEYWORDS_EXCLUDE)
+    has_include = any(_kw_in_text(kw, text) for kw in KEYWORDS_INCLUDE)
+    has_exclude = any(_kw_in_text(kw, text) for kw in KEYWORDS_EXCLUDE)
 
     return has_include and not has_exclude
 
@@ -38,7 +60,7 @@ def job_matches_user(job: dict, prefs: dict) -> bool:
     parsed, and the job may still be relevant.
     """
     # Build searchable text once (title always present; description may be absent)
-    text = f"{job.get('title', '')} {job.get('description', '')}".lower()
+    text = f"{job.get('title', '')} {job.get('description', '')}"
 
     # 1a. Country ──────────────────────────────────────────────────────────
     countries = prefs.get("countries") or ["SE"]  # default to Sweden only
@@ -51,14 +73,14 @@ def job_matches_user(job: dict, prefs: dict) -> bool:
     if sources and job.get("source") not in sources:
         return False
 
-    # 2. Keyword include (at least one must match) ────────────────────────
+    # 2. Keyword include (at least one must match, whole-word) ──────────
     kw_inc = prefs.get("keywords_include") or []
-    if kw_inc and not any(kw.lower() in text for kw in kw_inc):
+    if kw_inc and not any(_kw_in_text(kw, text) for kw in kw_inc):
         return False
 
-    # 3. Keyword exclude (none may match) ─────────────────────────────────
+    # 3. Keyword exclude (none may match, whole-word) ───────────────────
     kw_exc = prefs.get("keywords_exclude") or []
-    if kw_exc and any(kw.lower() in text for kw in kw_exc):
+    if kw_exc and any(_kw_in_text(kw, text) for kw in kw_exc):
         return False
 
     # 4. Region (län) filter ──────────────────────────────────────────────
