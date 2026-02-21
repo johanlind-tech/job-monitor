@@ -59,7 +59,7 @@ BEGIN
         NEW.id,
         NEW.email,
         'trialing',
-        now() + interval '14 days',
+        now() + interval '7 days',
         now()
     );
 
