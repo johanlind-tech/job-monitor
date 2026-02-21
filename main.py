@@ -114,14 +114,11 @@ def run():
         email = user["email"]
 
         jobs = fetch_unsent_jobs_for_user(user_id)
-        if not jobs:
-            print(f"[INFO]  → {email}: 0 jobs — skipped (empty queue)")
-            skip_count += 1
-            continue
 
         success = send_digest(jobs, email)
         if success:
-            mark_queue_sent(user_id, [j["id"] for j in jobs])
+            if jobs:
+                mark_queue_sent(user_id, [j["id"] for j in jobs])
             print(f"[INFO]  → {email}: {len(jobs)} jobs — sent")
             sent_count += 1
         else:

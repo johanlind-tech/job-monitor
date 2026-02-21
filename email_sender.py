@@ -234,14 +234,105 @@ def _build_html(jobs: list[dict]) -> str:
     return html
 
 
+def _build_empty_html() -> str:
+    """Build a branded 'no new matches today' email."""
+    today = date.today().strftime("%d %b %Y")
+    return f"""\
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background-color:{_BG};font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;">
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:{_BG};">
+<tr><td align="center" style="padding:24px 16px;">
+
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+
+<!-- ═══ HEADER ═══ -->
+<tr><td style="padding:32px 32px 24px;text-align:center;">
+  <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
+  <tr>
+    <td style="font-size:11px;font-weight:700;letter-spacing:3px;color:{_GOLD};font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;text-transform:uppercase;">
+      &#9678; NORDIC EXECUTIVE LIST
+    </td>
+  </tr>
+  </table>
+</td></tr>
+
+<!-- ═══ DIVIDER ═══ -->
+<tr><td style="padding:0 32px;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+  <tr><td style="border-top:1px solid {_BORDER};font-size:0;line-height:0;">&nbsp;</td></tr>
+  </table>
+</td></tr>
+
+<!-- ═══ HEADLINE ═══ -->
+<tr><td style="padding:28px 32px 8px;text-align:center;">
+  <h1 style="margin:0;font-size:26px;font-weight:400;color:{_TEXT};font-family:Georgia,'Times New Roman',serif;line-height:1.3;">
+    Your Daily Executive Briefing
+  </h1>
+</td></tr>
+<tr><td style="padding:0 32px 28px;text-align:center;">
+  <span style="display:inline-block;background-color:{_CARD_BG};border:1px solid {_BORDER};border-radius:20px;padding:6px 18px;font-size:13px;color:{_TEXT_MUTED};letter-spacing:0.3px;">
+    {today}
+  </span>
+</td></tr>
+
+<!-- ═══ EMPTY STATE ═══ -->
+<tr><td style="padding:0 24px 12px;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:{_CARD_BG};border:1px solid {_BORDER};border-radius:8px;">
+  <tr><td style="padding:32px 28px;text-align:center;">
+    <p style="margin:0 0 12px;font-size:28px;line-height:1;">&#9734;</p>
+    <p style="margin:0 0 8px;font-size:16px;color:{_TEXT};font-family:Georgia,'Times New Roman',serif;line-height:1.5;">
+      A quiet day on the executive front.
+    </p>
+    <p style="margin:0;font-size:14px;color:{_TEXT_MUTED};line-height:1.5;">
+      No new positions matched your criteria today.<br/>
+      We&rsquo;ll be back tomorrow &mdash; fingers crossed!
+    </p>
+  </td></tr>
+  </table>
+</td></tr>
+
+<!-- ═══ SECONDARY LINK ═══ -->
+<tr><td style="padding:20px 32px 4px;text-align:center;">
+  <span style="font-size:12px;color:{_TEXT_MUTED};">
+    Want to see more roles?&ensp;
+    <a href="https://nordicexecutivelist.com/preferences" style="color:{_GOLD};text-decoration:underline;" target="_blank">Broaden your preferences</a>
+  </span>
+</td></tr>
+
+<!-- ═══ FOOTER DIVIDER ═══ -->
+<tr><td style="padding:24px 32px 0;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+  <tr><td style="border-top:1px solid {_BORDER};font-size:0;line-height:0;">&nbsp;</td></tr>
+  </table>
+</td></tr>
+
+<!-- ═══ FOOTER ═══ -->
+<tr><td style="padding:20px 32px 32px;text-align:center;">
+  <p style="margin:0 0 4px;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:{_TEXT_MUTED};font-weight:600;">
+    Nordic Executive List
+  </p>
+  <p style="margin:0;font-size:11px;color:{_TEXT_MUTED};line-height:1.6;">
+    Your personalized executive job digest
+  </p>
+</td></tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>
+"""
+
+
 def send_digest(jobs: list[dict], recipient_email: str) -> bool:
     """Send an HTML digest email to a single user via SendGrid.
 
     Returns True on success, False on failure (so the caller can decide
     whether to mark the queue entries as sent).
     """
-    if not jobs:
-        return False
 
     api_key = os.environ.get("SENDGRID_API_KEY")
     if not api_key:
@@ -250,9 +341,13 @@ def send_digest(jobs: list[dict], recipient_email: str) -> bool:
 
     from_email = os.environ.get("SENDGRID_FROM_EMAIL", "noreply@nordicexecutivelist.com")
     today = date.today().strftime("%d %b %Y")
-    subject = f"Your Executive Briefing — {today} ({len(jobs)} new)"
 
-    html = _build_html(jobs)
+    if jobs:
+        subject = f"Your Executive Briefing — {today} ({len(jobs)} new)"
+        html = _build_html(jobs)
+    else:
+        subject = f"Your Executive Briefing — {today}"
+        html = _build_empty_html()
 
     message = Mail(
         from_email=Email(from_email, "Nordic Executive List"),
